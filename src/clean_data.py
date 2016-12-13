@@ -8,12 +8,11 @@ import numpy as np
 
 
 def create_joined():
-    train = pd.read_csv('../data/train_ver2.csv', na_values=[' NA', '     NA'])
-    test = pd.read_csv('../data/test_ver2.csv', na_values=[' NA', '     NA'])
+    train = pd.read_csv('../data/train_ver2.csv', na_values=[' NA', '     NA', 'NA', '         NA'], dtype={'renta': float})
+    test = pd.read_csv('../data/test_ver2.csv', na_values=[' NA', '     NA', 'NA', '         NA'], dtype={'renta': float})
 
     train.loc[train['age'] > 118] = np.nan
     test.loc[test['age'] > 118] = np.nan
-
 
     train = train[~train['fecha_dato'].isin(['2015-07-28',
                                              '2015-08-28',
@@ -51,10 +50,23 @@ def create_joined():
 
     train_X = train_cut[train_cut['fecha_dato'] != '06']
 
-    temp_train = train_X[train_X['fecha_dato'] == '01'].drop(['fecha_dato', 'age', 'sexo'], 1)
-    temp_test = test_cut[test_cut['fecha_dato'] == '01'].drop(['fecha_dato', 'age', 'sexo'], 1)
+    to_drop = ['age',
+               'sexo',
+               'canal_entrada',
+               'conyuemp',
+               'segmento',
+               'nomprov',
+               'pais_residencia',
+               'indresi',
+               'indext']
 
-    old_columns = [x for x in temp_train.columns if x not in ['ncodpers', 'fecha_dato']]
+    train_X = train_X.drop(to_drop, 1)
+    test_cut = test_cut.drop(to_drop, 1)
+
+    temp_train = train_X[train_X['fecha_dato'] == '01'].drop('fecha_dato', 1)
+    temp_test = test_cut[test_cut['fecha_dato'] == '01'].drop('fecha_dato', 1)
+
+    old_columns = [x for x in temp_train.columns if x != 'ncodpers']
     new_columns = [x + '_01' for x in old_columns]
 
     temp_train = temp_train.rename(columns=dict(zip(old_columns, new_columns)))
@@ -64,7 +76,7 @@ def create_joined():
         to_merge_train = train_X[train_X['fecha_dato'] == month].drop('fecha_dato', 1)
         to_merge_test = test_cut[test_cut['fecha_dato'] == month].drop('fecha_dato', 1)
 
-        old_columns = [x for x in to_merge_train.columns if x not in ['ncodpers', 'fecha_dato']]
+        old_columns = [x for x in to_merge_train.columns if x != 'ncodpers']
         new_columns = [x + '_' + month for x in old_columns]
         to_merge_train = to_merge_train.rename(columns=dict(zip(old_columns, new_columns)))
         to_merge_test = to_merge_test.rename(columns=dict(zip(old_columns, new_columns)))
@@ -107,17 +119,16 @@ def target_variables():
 
 
 def filled_zero_joined():
-    joined = create_joined()
-    temp = joined.copy()
+    temp = create_joined()
 
     for column in target_variables():
         temp[column + '_01'] = temp[column + '_01'].fillna(0)
         for month in ['02', '03', '04', '05']:
             current_column = column + '_' + month
             old_column = column + '_0' + str(int(month) - 1)
-
-            temp.loc[temp[current_column].isnull(), current_column] = temp.loc[
-                temp[current_column].isnull(), old_column]
+            null_index = temp[current_column].isnull()
+            temp.loc[null_index, current_column] = temp.loc[null_index, old_column]
+            assert temp[current_column].isnull().sum() == 0
     return temp
 
 
@@ -131,8 +142,8 @@ def get_train_test(cached=False):
             pass
 
     joined = filled_zero_joined()
-    train = joined[joined[target_variables()].notnull()]
-    test = joined[joined[target_variables()].isnull()].drop(target_variables(), 1)
+    train = joined[joined[target_variables()].notnull().any(axis=1)]
+    test = joined[joined[target_variables()].isnull().any(axis=1)].drop(target_variables(), 1)
 
     df = pd.DataFrame()
     for column in target_variables():
