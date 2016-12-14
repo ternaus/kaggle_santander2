@@ -5,6 +5,8 @@ from __future__ import division
 import pandas as pd
 from tqdm import tqdm
 import numpy as np
+from sframe import SFrame
+from sklearn.preprocessing import LabelEncoder
 
 
 def create_joined():
@@ -155,5 +157,41 @@ def get_train_test(cached=False):
 
     return train, test
 
+
+def get_target_matrix(train):
+    target_previous = train[[x + '_05' for x in target_variables()]]
+    target_current = train[target_variables()]
+    return (target_current.values > target_previous.values).astype(int)
+
+
+def stack_train(train):
+    target = get_target_matrix(train)
+    target_names = np.array(target_variables())
+
+    def helper(x):
+        return target_names[target[x] == 1]
+
+    result = map(helper, range(target.shape[0]))
+    df = pd.DataFrame({'ncodpers': train['ncodpers'], 'added_products': result})
+    ncod_prod_mapping = SFrame(df).stack('added_products', new_column_name='added_product').to_dataframe()
+
+    return train.merge(ncod_prod_mapping, on='ncodpers')
+
+
+def label_encoded(cached):
+    train, test = get_train_test(cached)
+
+    for column in tqdm(train.columns[train.dtypes == 'object']):
+        le = LabelEncoder()
+        train[column] = le.fit_transform(train[column])
+        test[column] = le.fit_transform(test[column])
+
+    train = stack_train(train)
+
+    return train, test
+
+
 if __name__ == '__main__':
-    get_train_test()
+    import os
+    os.environ['HDF5_DISABLE_VERSION_CHECK'] = str(2)
+    label_encoded(True)
