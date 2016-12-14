@@ -172,9 +172,13 @@ def get_train_test(cached=False):
             pass
 
     joined = filled_zero_joined()
-    print joined[target_variables()].notnull().any(axis=1).sujm()
-    train = joined[joined[target_variables()].notnull().any(axis=1)]
-    test = joined[joined[target_variables()].isnull().any(axis=1)].drop(target_variables(), 1)
+
+    test_index = joined[target_variables()].isnull().all(axis=1)
+
+    print test_index.sum()
+
+    train = joined[~test_index]
+    test = joined[test_index].drop(target_variables(), 1)
 
     assert test.shape[0] == 929615
 
@@ -216,8 +220,28 @@ def label_encoded(cached):
 
     for column in tqdm(train.columns[train.dtypes == 'object']):
         le = LabelEncoder()
+        set_train = set(train[column].unique())
+        set_test = set(test[column].unique())
+        remove_train = set_train - set_test
+        remove_test = set_test - set_train
+
+        remove = remove_train.union(remove_test)
+
+        # print column, remove
+
+        def helper(x):
+            if x in remove:
+                return np.nan
+            return x
+
+        train[column] = train[column].apply(helper)
+        test[column] = test[column].apply(helper)
+
+        train[column] = train[column].fillna('')
+        test[column] = test[column].fillna('')
+
         train[column] = le.fit_transform(train[column])
-        test[column] = le.fit_transform(test[column])
+        test[column] = le.transform(test[column])
 
     train = stack_train(train)
 
@@ -269,4 +293,4 @@ def get_rent(rent):
 if __name__ == '__main__':
     import os
     os.environ['HDF5_DISABLE_VERSION_CHECK'] = str(2)
-    print create_joined(cached=False)
+    print get_train_test(cached=False)
