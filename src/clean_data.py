@@ -9,12 +9,22 @@ from sframe import SFrame
 from sklearn.preprocessing import LabelEncoder
 
 
-def create_joined():
-    train = pd.read_csv('../data/train_ver2.csv', na_values=[' NA', '     NA', 'NA', '         NA'], dtype={'renta': float})
-    test = pd.read_csv('../data/test_ver2.csv', na_values=[' NA', '     NA', 'NA', '         NA'], dtype={'renta': float})
+def create_joined(cached=False):
+    if cached:
+        try:
+            train = pd.read_hdf('../data/train_raw.h5')
+            test = pd.read_hdf('../data/test_raw.h5')
+            return train, test
+        except:
+            pass
 
-    train.loc[train['age'] > 118] = np.nan
-    test.loc[test['age'] > 118] = np.nan
+    missing_values = [' NA', '     NA', 'NA', '         NA', -99]
+    dtype = {'ncodpers': int, 'fecha_dato': str, 'sexo': str, 'ult_fec_cli_1t': str, 'indext': str,
+             'canal_entrada': str,
+             'pais_residencia': str}
+
+    train = pd.read_csv('../data/train_ver2.csv', na_values=missing_values, dtype=dtype)
+    test = pd.read_csv('../data/test_ver2.csv', na_values=missing_values, dtype=dtype)
 
     train = train[~train['fecha_dato'].isin(['2015-07-28',
                                              '2015-08-28',
@@ -22,6 +32,15 @@ def create_joined():
                                              '2015-10-28',
                                              '2015-11-28',
                                              '2015-12-28'])]
+
+    train['age'] = train['age'].apply(get_age)
+    test['age'] = test['age'].apply(get_age)
+
+    train['antiguedad'] = train['antiguedad'].apply(get_seniority)
+    test['antiguedad'] = test['antiguedad'].apply(get_seniority)
+
+    train['renta'] = train['renta'].apply(get_rent)
+    test['renta'] = test['renta'].apply(get_rent)
 
     train_cut = train[train['fecha_dato'].isin(['2015-01-28',
                                                 '2015-02-28',
@@ -90,7 +109,14 @@ def create_joined():
 
     X_test = test.drop('fecha_dato', 1).merge(temp_test, on='ncodpers', how='left')
 
-    return pd.concat([X, X_test])
+    assert X_test.shape[0] == 929615
+
+    X.to_hdf('../data/train_raw.h5', 'Table')
+    X_test.to_hdf('../data/test_raw.h5', 'Table')
+
+    print X.shape, X_test.shape
+
+    return X, X_test
 
 
 def target_variables():
@@ -121,9 +147,11 @@ def target_variables():
 
 
 def filled_zero_joined():
-    temp = create_joined()
+    X, X_test = create_joined(cached=True)
 
-    for column in target_variables():
+    temp = pd.concat([X, X_test])
+
+    for column in tqdm(target_variables()):
         temp[column + '_01'] = temp[column + '_01'].fillna(0)
         for month in ['02', '03', '04', '05']:
             current_column = column + '_' + month
@@ -144,8 +172,11 @@ def get_train_test(cached=False):
             pass
 
     joined = filled_zero_joined()
+    print joined[target_variables()].notnull().any(axis=1).sujm()
     train = joined[joined[target_variables()].notnull().any(axis=1)]
     test = joined[joined[target_variables()].isnull().any(axis=1)].drop(target_variables(), 1)
+
+    assert test.shape[0] == 929615
 
     df = pd.DataFrame()
     for column in target_variables():
@@ -181,6 +212,8 @@ def stack_train(train):
 def label_encoded(cached):
     train, test = get_train_test(cached)
 
+    print test.shape
+
     for column in tqdm(train.columns[train.dtypes == 'object']):
         le = LabelEncoder()
         train[column] = le.fit_transform(train[column])
@@ -191,7 +224,49 @@ def label_encoded(cached):
     return train, test
 
 
+def get_age(age):
+    mean_age = 40.0
+    min_age = 20.0
+    max_age = 90.0
+    range_age = max_age - min_age
+
+    if np.isnan(age):
+        age = mean_age
+    else:
+        age = float(age)
+        if age < min_age:
+            age = min_age
+        elif age > max_age:
+            age = max_age
+
+    return round((age - min_age) / range_age, 4)
+
+
+def get_seniority(cust_seniority):
+    min_value = 0.
+    max_value = 256.0
+    range_value = max_value - min_value
+    missing_value = -99999.
+    if np.isnan(cust_seniority):
+        cust_seniority = missing_value
+    else:
+        cust_seniority = min(max_value, max(min_value, cust_seniority))
+    return round((cust_seniority - min_value) / range_value, 4)
+
+
+def get_rent(rent):
+    min_value = 0.0
+    max_value = 1500000.0
+    range_value = max_value - min_value
+    missing_value = -99999
+    if np.isnan(rent):
+        rent = missing_value
+    else:
+        rent = min(max_value, max(min_value, rent))
+    return round((rent - min_value) / range_value, 6)
+
+
 if __name__ == '__main__':
     import os
     os.environ['HDF5_DISABLE_VERSION_CHECK'] = str(2)
-    label_encoded(True)
+    print create_joined(cached=False)
