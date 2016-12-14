@@ -229,6 +229,7 @@ if __name__ == "__main__":
     print(datetime.datetime.now() - start_time)
 
     print("Getting the top products..")
+
     target_cols = np.array(target_cols)
     preds = np.argsort(preds, axis=1)
     preds = np.fliplr(preds)[:, :7]
