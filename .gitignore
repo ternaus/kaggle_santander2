@@ -1,0 +1,10 @@
+
+.DS_Store
+
+.idea/kaggle_santander2.iml
+
+data/*
+
+*.xml
+
+*.pyc
