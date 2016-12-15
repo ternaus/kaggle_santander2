@@ -46,12 +46,44 @@ def create_joined(cached=False):
     train['renta'] = train['renta'].apply(get_rent)
     test['renta'] = test['renta'].apply(get_rent)
 
+    sexo_mode = train['sexo'].mode()[0]
+
+    train['sexo'] = train['sexo'].fillna(sexo_mode)
+    test['sexo'] = test['sexo'].fillna(sexo_mode)
+
+    train.loc[train["ind_nuevo"].isnull(), "ind_nuevo"] = 1
+    test.loc[test["ind_nuevo"].isnull(), "ind_nuevo"] = 1
+
+    train.loc[train.indrel.isnull(), "indrel"] = 1
+    test.loc[test.indrel.isnull(), "indrel"] = 1
+
+    test['conyuemp'] = test['conyuemp'].fillna('')
+    train['conyuemp'] = train['conyuemp'].fillna('')
+
+    train['segmento'] = train['segmento'].fillna('02 - PARTICULARES')
+    test['segmento'] = test['segmento'].fillna('02 - PARTICULARES')
+
+    train['nomprov'] = train['nomprov'].fillna('UNKNOWN')
+    test['nomprov'] = test['nomprov'].fillna('UNKNOWN')
+
+    # Filling missing values in train
+    g_rent_train = train.groupby('nomprov')['renta'].median()
+
+    g_rent_test = test.groupby(['nomprov'])['renta'].median()
+
+    train.loc[train['renta'].isnull(), 'renta'] = train.loc[train['renta'].isnull(), 'nomprov'].map(g_rent_train)
+    test.loc[test['renta'].isnull(), 'renta'] = test.loc[test['renta'].isnull(), 'nomprov'].map(g_rent_test)
+
+    fill_rent = train['renta'].median()
+    train['renta'] = train['renta'].fillna(fill_rent)
+    test['renta'] = test['renta'].fillna(fill_rent)
+
     # Rent can have trend and it is important feature => normalize it by median
     g_rent_train = train.groupby('fecha_dato')['renta'].median()
     for date in tqdm(train['fecha_dato'].unique()):
         train.loc[train['fecha_dato'] == date, 'renta'] /= g_rent_train[date]
 
-    test['renta'] /= train['renta'].median()
+    test['renta'] /= test['renta'].median()
 
     train_cut = train[train['fecha_dato'].isin(['2015-01-28',
                                                 '2015-02-28',
@@ -66,20 +98,44 @@ def create_joined(cached=False):
                                                '2016-04-28',
                                                '2016-05-28'])]
 
-    train_cut['fecha_dato'] = pd.to_datetime(train_cut['fecha_dato'])
-    train_cut['fecha_alta'] = pd.to_datetime(train_cut['fecha_alta'])
+    train_cut.loc[:, 'fecha_dato'] = pd.to_datetime(train_cut['fecha_dato'])
+    train_cut.loc[:, 'fecha_alta'] = pd.to_datetime(train_cut['fecha_alta'])
+    train_cut.loc[:, 'ult_fec_cli_1t'] = pd.to_datetime(train_cut['ult_fec_cli_1t'])
 
-    train_cut['month'] = train_cut['fecha_dato'].dt.month
+    train_cut.loc[:, 'month'] = train_cut['fecha_dato'].dt.month
 
-    test_cut['fecha_dato'] = pd.to_datetime(test_cut['fecha_dato'])
-    test_cut['fecha_alta'] = pd.to_datetime(test_cut['fecha_alta'])
+    test.loc[:, 'fecha_dato'] = pd.to_datetime(test['fecha_dato'])
+    test.loc[:, 'fecha_alta'] = pd.to_datetime(test['fecha_alta'])
+    test.loc[:, 'ult_fec_cli_1t'] = pd.to_datetime(test['ult_fec_cli_1t'])
 
-    test_cut['month'] = test_cut['fecha_dato'].dt.month
+    # test_cut.loc[:, 'fecha_alta'] = pd.to_datetime(test_cut['fecha_alta'])
+    test_cut.loc[:, 'fecha_dato'] = pd.to_datetime(test_cut['fecha_dato'])
+
+    test_cut.loc[:, 'month'] = test_cut['fecha_dato'].dt.month
 
     train_target = train_cut[train_cut['month'] == 6]
 
     train_target.loc[:, 'days'] = (train_target['fecha_dato'] - train_target['fecha_alta']).dt.days
-    test_cut.loc[:, 'days'] = (test_cut['fecha_dato'] - test_cut['fecha_alta']).dt.days
+    train_target.loc[:, 'days_primary'] = (train_target['fecha_dato'] - train_target['ult_fec_cli_1t']).dt.days
+
+    test.loc[:, 'days'] = (test['fecha_dato'] - test['fecha_alta']).dt.days
+    test.loc[:, 'days_primary'] = (test['fecha_dato'] - test['ult_fec_cli_1t']).dt.days
+
+    # Add statistical features to the last column
+    # to_encode = ['sexo', 'segmento', 'pais_residencia', 'nomprov']
+    #
+    # for column in to_encode:
+    #     train_target[column + '_mean'] = train_target[column].map(train_target.groupby(column)['renta'].mean())
+    #     train_target[column + '_median'] = train_target[column].map(train_target.groupby(column)['renta'].median())
+    #     train_target[column + '_std'] = train_target[column].map(train_target.groupby(column)['renta'].std())
+    #     train_target[column + '_min'] = train_target[column].map(train_target.groupby(column)['renta'].min())
+    #     train_target[column + '_max'] = train_target[column].map(train_target.groupby(column)['renta'].max())
+    #
+    #     test[column + '_mean'] = test[column].map(test.groupby(column)['renta'].mean())
+    #     test[column + '_median'] = test[column].map(test.groupby(column)['renta'].median())
+    #     test[column + '_std'] = test[column].map(test.groupby(column)['renta'].std())
+    #     test[column + '_min'] = test[column].map(test.groupby(column)['renta'].min())
+    #     test[column + '_max'] = test[column].map(test.groupby(column)['renta'].max())
 
     train_X = train_cut[train_cut['month'] != 6]
 
@@ -96,13 +152,20 @@ def create_joined(cached=False):
                'indfall',
                'fecha_alta',
                'fecha_dato',
-               ]
+               'ult_fec_cli_1t',
+               'ind_nuevo',
+               'tipodom',
+               # 'pais_residencia'
+               ] #+ to_encode
 
     train_X = train_X.drop(to_drop, 1)
     test_cut = test_cut.drop(to_drop, 1)
 
     temp_train = train_X[train_X['month'] == 1].drop('month', 1)
+    temp_train['num_products'] = temp_train[target_variables()].sum(axis=1)
+
     temp_test = test_cut[test_cut['month'] == 1].drop('month', 1)
+    temp_test['num_products'] = temp_test[target_variables()].sum(axis=1)
 
     old_columns = [x for x in temp_train.columns if x != 'ncodpers']
     new_columns = [x + '_01' for x in old_columns]
@@ -113,6 +176,9 @@ def create_joined(cached=False):
     for month in tqdm([2, 3, 4, 5]):
         to_merge_train = train_X[train_X['month'] == month].drop('month', 1)
         to_merge_test = test_cut[test_cut['month'] == month].drop('month', 1)
+
+        to_merge_train['num_products'] = to_merge_train[target_variables()].sum(axis=1)
+        to_merge_test['num_products'] = to_merge_test[target_variables()].sum(axis=1)
 
         old_columns = [x for x in to_merge_train.columns if x != 'ncodpers']
 
@@ -128,20 +194,35 @@ def create_joined(cached=False):
 
     X_test = test.merge(temp_test, on='ncodpers', how='left')
 
-    to_drop = ['fecha_dato', 'fecha_alta']
+    to_drop = ['fecha_dato', 'fecha_alta', 'ult_fec_cli_1t'] #+ to_encode
 
     X_test = X_test.drop(to_drop, 1)
     X = X.drop(to_drop, 1)
 
+    # Add renta comparisons
+    X['renta65'] = X['renta'] - X['renta_05']
+    X['renta64'] = X['renta'] - X['renta_04']
+    X['renta63'] = X['renta'] - X['renta_03']
+    X['renta62'] = X['renta'] - X['renta_02']
+    X['renta61'] = X['renta'] - X['renta_01']
+
+    X_test['renta65'] = X_test['renta'] - X_test['renta_05']
+    X_test['renta64'] = X_test['renta'] - X_test['renta_04']
+    X_test['renta63'] = X_test['renta'] - X_test['renta_03']
+    X_test['renta62'] = X_test['renta'] - X_test['renta_02']
+    X_test['renta61'] = X_test['renta'] - X_test['renta_01']
+
     assert X_test.shape[0] == 929615
 
-    print list(X.columns)
-    print list(X_test.columns)
+    print sorted(list(X.columns))
+    print sorted(list(X_test.columns))
 
     X.to_hdf('../data/train_raw.h5', 'Table')
     X_test.to_hdf('../data/test_raw.h5', 'Table')
 
     print X.shape, X_test.shape
+    print X.isnull().sum()
+    print X_test.isnull().sum()
 
     return X, X_test
 
@@ -294,13 +375,12 @@ def get_age(age):
 def get_seniority(cust_seniority):
     min_value = 0.
     max_value = 256.0
-    range_value = max_value - min_value
-    missing_value = -99999.
+
     if np.isnan(cust_seniority):
-        cust_seniority = missing_value
+        cust_seniority = min_value
     else:
         cust_seniority = min(max_value, max(min_value, cust_seniority))
-    return round((cust_seniority - min_value) / range_value, 4)
+    return cust_seniority
 
 
 def get_rent(rent):

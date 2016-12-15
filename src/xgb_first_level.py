@@ -14,7 +14,13 @@ import pandas as pd
 import datetime
 
 
-features = ['age',
+features = [
+ 'num_products_01',
+ 'num_products_02',
+ 'num_products_03',
+ 'num_products_04',
+ 'num_products_05',
+ 'age',
  'antiguedad',
  'antiguedad_01',
  'antiguedad_02',
@@ -24,12 +30,8 @@ features = ['age',
  'canal_entrada',
  'cod_prov',
  'conyuemp',
-#  'fecha_alta',
-#  'fecha_alta_01',
-#  'fecha_alta_02',
-#  'fecha_alta_03',
-#  'fecha_alta_04',
-#  'fecha_alta_05',
+ 'days',
+ 'days_primary',
  'ind_actividad_cliente',
  'ind_actividad_cliente_01',
  'ind_actividad_cliente_02',
@@ -145,11 +147,6 @@ features = ['age',
  'ind_nomina_ult1_04',
  'ind_nomina_ult1_05',
  'ind_nuevo',
- 'ind_nuevo_01',
- 'ind_nuevo_02',
- 'ind_nuevo_03',
- 'ind_nuevo_04',
- 'ind_nuevo_05',
 #  'ind_plan_fin_ult1',
  'ind_plan_fin_ult1_01',
  'ind_plan_fin_ult1_02',
@@ -208,22 +205,12 @@ features = ['age',
  'indrel_1mes_05',
  'indresi',
 #  'ncodpers',
- 'nomprov',
- 'pais_residencia',
+#  'nomprov',
+#  'pais_residencia',
  'renta',
- 'renta_01',
- 'renta_02',
- 'renta_03',
- 'renta_04',
- 'renta_05',
  'segmento',
  'sexo',
  'tipodom',
- 'tipodom_01',
- 'tipodom_02',
- 'tipodom_03',
- 'tipodom_04',
- 'tipodom_05',
  'tiprel_1mes',
  'tiprel_1mes_01',
  'tiprel_1mes_02',
@@ -240,6 +227,12 @@ features = ['age',
 #  'num_new_products',
 #  'added_products',
 #  'added_product'
+'renta61', 'renta62', 'renta63', 'renta64', 'renta65',
+    # 'renta_01', 'renta_02', 'renta_03', 'renta_04', 'renta_05',
+    # 'segmento_max', 'segmento_mean', 'segmento_median', 'segmento_min', 'segmento_std',
+    # 'sexo_max', 'sexo_mean', 'sexo_median', 'sexo_min', 'sexo_std',
+    # 'pais_residencia_max', 'pais_residencia_mean', 'pais_residencia_median', 'pais_residencia_min', 'pais_residencia_std',
+    # 'nomprov_max', 'nomprov_mean', 'nomprov_median', 'nomprov_min', 'nomprov_std'
            ]
 
 
@@ -254,7 +247,7 @@ class XgbWrapper(object):
         self.param['seed'] = seed
         dval = xgb.DMatrix(x_val, label=y_val)
         watchlist = [(dtrain, 'train'), (dval, 'val')]
-        self.gbdt = xgb.train(self.param, dtrain, self.nrounds, watchlist, early_stopping_rounds=10)
+        self.gbdt = xgb.train(self.param, dtrain, self.nrounds, watchlist, early_stopping_rounds=50)
 
     def predict(self, x):
         return self.gbdt.predict(xgb.DMatrix(x))
@@ -294,15 +287,23 @@ def get_oof(clf):
 
 train, test = clean_data.label_encoded(cached=False)
 
+train = train.fillna(-99999)
+test = test.fillna(-99999)
 
 # Classes with too few elements excluded
 train = train[~train['added_product'].isin(['ind_cder_fin_ult1',
-                                           'ind_pres_fin_ult1',
-                                           'ind_hip_fin_ult1',
-                                           'ind_viv_fin_ult1'])]
+                                            'ind_pres_fin_ult1',
+                                            'ind_hip_fin_ult1',
+                                            'ind_viv_fin_ult1'])]
 
 X = train[features].values
 X_test = test[features].values
+#
+# X_lr = pd.read_csv('oof/lr_train_1.csv').drop('ncodpers', 1).values
+# X_test_lr = pd.read_csv('oof/lr_test_1.csv').drop('ncodpers', 1).values
+#
+# X = np.hstack([X, X_lr])
+# X_test = np.hstack([X_test, X_test_lr])
 
 print X.shape, X_test.shape
 
@@ -320,13 +321,13 @@ num_test = X_test.shape[0]
 kf = StratifiedKFold(n_folds, shuffle=True, random_state=RANDOM_STATE)
 
 xgb_params = {
-    # 'min_child_weight': 100,
+    'min_child_weight': 10,
     'eta': 0.1,
-    'colsample_bytree': 0.8,
-    'max_depth': 8,
-    'subsample': 0.8,
+    'colsample_bytree': 0.7,
+    'max_depth': 6,
+    'subsample': 0.9,
     # 'max_delta_step': 0.01,
-    'alpha': 5,
+    # 'alpha': 5,
     'lambda': 5,
     'gamma': 0,
     'silent': 1,
@@ -351,7 +352,6 @@ print '[{datetime}] Saving train probs'.format(datetime=str(datetime.datetime.no
 oof_train = pd.DataFrame(xg_oof_train, columns=le_y.classes_)
 oof_train['ncodpers'] = train['ncodpers'].values
 oof_train.to_csv('oof/xgb_train_1.csv', index=False)
-
 
 print '[{datetime}] Saving test probs'.format(datetime=str(datetime.datetime.now()))
 xg_oof_test /= (n_folds * nbags)
