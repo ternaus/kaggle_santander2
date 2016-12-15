@@ -19,7 +19,11 @@ def create_joined(cached=False):
             pass
 
     missing_values = [' NA', '     NA', 'NA', '         NA', -99]
-    dtype = {'ncodpers': int, 'fecha_dato': str, 'sexo': str, 'ult_fec_cli_1t': str, 'indext': str,
+    dtype = {'ncodpers': int,
+             'fecha_dato': str,
+             'sexo': str,
+             'ult_fec_cli_1t': str,
+             'indext': str,
              'canal_entrada': str,
              'pais_residencia': str}
 
@@ -42,6 +46,13 @@ def create_joined(cached=False):
     train['renta'] = train['renta'].apply(get_rent)
     test['renta'] = test['renta'].apply(get_rent)
 
+    # Rent can have trend and it is important feature => normalize it by median
+    g_rent_train = train.groupby('fecha_dato')['renta'].median()
+    for date in tqdm(train['fecha_dato'].unique()):
+        train.loc[train['fecha_dato'] == date, 'renta'] /= g_rent_train[date]
+
+    test['renta'] /= train['renta'].median()
+
     train_cut = train[train['fecha_dato'].isin(['2015-01-28',
                                                 '2015-02-28',
                                                 '2015-03-28',
@@ -55,21 +66,22 @@ def create_joined(cached=False):
                                                '2016-04-28',
                                                '2016-05-28'])]
 
-    train_cut['fecha_dato'] = (train_cut['fecha_dato']
-                               .str
-                               .replace('2015-', '')
-                               .str
-                               .replace('-28', ''))
+    train_cut['fecha_dato'] = pd.to_datetime(train_cut['fecha_dato'])
+    train_cut['fecha_alta'] = pd.to_datetime(train_cut['fecha_alta'])
 
-    test_cut['fecha_dato'] = (test_cut['fecha_dato']
-                              .str
-                              .replace('2016-', '')
-                              .str
-                              .replace('-28', ''))
+    train_cut['month'] = train_cut['fecha_dato'].dt.month
 
-    train_target = train_cut[train_cut['fecha_dato'] == '06']
+    test_cut['fecha_dato'] = pd.to_datetime(test_cut['fecha_dato'])
+    test_cut['fecha_alta'] = pd.to_datetime(test_cut['fecha_alta'])
 
-    train_X = train_cut[train_cut['fecha_dato'] != '06']
+    test_cut['month'] = test_cut['fecha_dato'].dt.month
+
+    train_target = train_cut[train_cut['month'] == 6]
+
+    train_target.loc[:, 'days'] = (train_target['fecha_dato'] - train_target['fecha_alta']).dt.days
+    test_cut.loc[:, 'days'] = (test_cut['fecha_dato'] - test_cut['fecha_alta']).dt.days
+
+    train_X = train_cut[train_cut['month'] != 6]
 
     to_drop = ['age',
                'sexo',
@@ -77,15 +89,20 @@ def create_joined(cached=False):
                'conyuemp',
                'segmento',
                'nomprov',
+               'cod_prov',
                'pais_residencia',
                'indresi',
-               'indext']
+               'indext',
+               'indfall',
+               'fecha_alta',
+               'fecha_dato',
+               ]
 
     train_X = train_X.drop(to_drop, 1)
     test_cut = test_cut.drop(to_drop, 1)
 
-    temp_train = train_X[train_X['fecha_dato'] == '01'].drop('fecha_dato', 1)
-    temp_test = test_cut[test_cut['fecha_dato'] == '01'].drop('fecha_dato', 1)
+    temp_train = train_X[train_X['month'] == 1].drop('month', 1)
+    temp_test = test_cut[test_cut['month'] == 1].drop('month', 1)
 
     old_columns = [x for x in temp_train.columns if x != 'ncodpers']
     new_columns = [x + '_01' for x in old_columns]
@@ -93,23 +110,33 @@ def create_joined(cached=False):
     temp_train = temp_train.rename(columns=dict(zip(old_columns, new_columns)))
     temp_test = temp_test.rename(columns=dict(zip(old_columns, new_columns)))
 
-    for month in tqdm(['02', '03', '04', '05']):
-        to_merge_train = train_X[train_X['fecha_dato'] == month].drop('fecha_dato', 1)
-        to_merge_test = test_cut[test_cut['fecha_dato'] == month].drop('fecha_dato', 1)
+    for month in tqdm([2, 3, 4, 5]):
+        to_merge_train = train_X[train_X['month'] == month].drop('month', 1)
+        to_merge_test = test_cut[test_cut['month'] == month].drop('month', 1)
 
         old_columns = [x for x in to_merge_train.columns if x != 'ncodpers']
-        new_columns = [x + '_' + month for x in old_columns]
+
+        new_columns = [str(x) + '_0' + str(month)for x in old_columns]
+
         to_merge_train = to_merge_train.rename(columns=dict(zip(old_columns, new_columns)))
         to_merge_test = to_merge_test.rename(columns=dict(zip(old_columns, new_columns)))
 
         temp_train = temp_train.merge(to_merge_train, on='ncodpers', how='outer')
         temp_test = temp_test.merge(to_merge_test, on='ncodpers', how='outer')
 
-    X = train_target.drop('fecha_dato', 1).merge(temp_train, on='ncodpers', how='left')
+    X = train_target.merge(temp_train, on='ncodpers', how='left')
 
-    X_test = test.drop('fecha_dato', 1).merge(temp_test, on='ncodpers', how='left')
+    X_test = test.merge(temp_test, on='ncodpers', how='left')
+
+    to_drop = ['fecha_dato', 'fecha_alta']
+
+    X_test = X_test.drop(to_drop, 1)
+    X = X.drop(to_drop, 1)
 
     assert X_test.shape[0] == 929615
+
+    print list(X.columns)
+    print list(X_test.columns)
 
     X.to_hdf('../data/train_raw.h5', 'Table')
     X_test.to_hdf('../data/test_raw.h5', 'Table')
@@ -227,8 +254,6 @@ def label_encoded(cached):
 
         remove = remove_train.union(remove_test)
 
-        # print column, remove
-
         def helper(x):
             if x in remove:
                 return np.nan
@@ -281,16 +306,27 @@ def get_seniority(cust_seniority):
 def get_rent(rent):
     min_value = 0.0
     max_value = 1500000.0
-    range_value = max_value - min_value
-    missing_value = -99999
-    if np.isnan(rent):
-        rent = missing_value
-    else:
+    # missing_value = -99999
+    if not np.isnan(rent):
         rent = min(max_value, max(min_value, rent))
-    return round((rent - min_value) / range_value, 6)
+    return rent
+
+
+def submission(preds, X_test):
+    classes = np.array([x for x in preds.columns if x != 'ncodpers'])
+    prediction = preds[classes].values
+    previous = X_test[[x + '_05' for x in classes]].values
+    temp = prediction - previous
+
+    def helper(x):
+        return ' '.join(classes[np.argsort(temp[x])[:-8:-1]])
+
+    result = map(lambda x: helper(x), range(temp.shape[0]))
+
+    return pd.DataFrame({'ncodpers': preds['ncodpers'].values, 'added_products': result})
 
 
 if __name__ == '__main__':
     import os
     os.environ['HDF5_DISABLE_VERSION_CHECK'] = str(2)
-    print get_train_test(cached=False)
+    create_joined(cached=False)
