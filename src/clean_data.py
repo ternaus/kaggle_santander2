@@ -37,6 +37,9 @@ def create_joined(cached=False):
                                              '2015-11-28',
                                              '2015-12-28'])]
 
+    train['indrel_1mes'] = train['indrel_1mes'].map({'1.0': 1, '1': 1, '2.0': 2, '2': 2, '3.0': 3, '3': 3, '4.0': 4, '4': 4, 'P': 5})
+    test['indrel_1mes'] = test['indrel_1mes'].map({'1.0': 1, '1': 1, '2.0': 2, '2': 2, '3.0': 3, '3': 3, '4.0': 4, '4': 4, 'P': 5})
+
     train['age'] = train['age'].apply(get_age)
     test['age'] = test['age'].apply(get_age)
 
@@ -50,6 +53,9 @@ def create_joined(cached=False):
 
     train['sexo'] = train['sexo'].fillna(sexo_mode)
     test['sexo'] = test['sexo'].fillna(sexo_mode)
+
+    train['canal_entrada'] = train['canal_entrada'].fillna('KAT')
+    test['canal_entrada'] = test['canal_entrada'].fillna('KAT')
 
     train.loc[train["ind_nuevo"].isnull(), "ind_nuevo"] = 1
     test.loc[test["ind_nuevo"].isnull(), "ind_nuevo"] = 1
@@ -122,31 +128,31 @@ def create_joined(cached=False):
     test.loc[:, 'days_primary'] = (test['fecha_dato'] - test['ult_fec_cli_1t']).dt.days
 
     # Add statistical features to the last column
-    # to_encode = ['sexo', 'segmento', 'pais_residencia', 'nomprov']
-    #
-    # for column in to_encode:
-    #     train_target[column + '_mean'] = train_target[column].map(train_target.groupby(column)['renta'].mean())
-    #     train_target[column + '_median'] = train_target[column].map(train_target.groupby(column)['renta'].median())
-    #     train_target[column + '_std'] = train_target[column].map(train_target.groupby(column)['renta'].std())
-    #     train_target[column + '_min'] = train_target[column].map(train_target.groupby(column)['renta'].min())
-    #     train_target[column + '_max'] = train_target[column].map(train_target.groupby(column)['renta'].max())
-    #
-    #     test[column + '_mean'] = test[column].map(test.groupby(column)['renta'].mean())
-    #     test[column + '_median'] = test[column].map(test.groupby(column)['renta'].median())
-    #     test[column + '_std'] = test[column].map(test.groupby(column)['renta'].std())
-    #     test[column + '_min'] = test[column].map(test.groupby(column)['renta'].min())
-    #     test[column + '_max'] = test[column].map(test.groupby(column)['renta'].max())
+    to_encode = ['sexo', 'segmento', 'pais_residencia', 'nomprov', 'canal_entrada']
+
+    for column in to_encode:
+        train_target[column + '_mean'] = train_target[column].map(train_target.groupby(column)['renta'].mean())
+        train_target[column + '_median'] = train_target[column].map(train_target.groupby(column)['renta'].median())
+        train_target[column + '_std'] = train_target[column].map(train_target.groupby(column)['renta'].std())
+        train_target[column + '_min'] = train_target[column].map(train_target.groupby(column)['renta'].min())
+        train_target[column + '_max'] = train_target[column].map(train_target.groupby(column)['renta'].max())
+
+        test[column + '_mean'] = test[column].map(test.groupby(column)['renta'].mean())
+        test[column + '_median'] = test[column].map(test.groupby(column)['renta'].median())
+        test[column + '_std'] = test[column].map(test.groupby(column)['renta'].std())
+        test[column + '_min'] = test[column].map(test.groupby(column)['renta'].min())
+        test[column + '_max'] = test[column].map(test.groupby(column)['renta'].max())
 
     train_X = train_cut[train_cut['month'] != 6]
 
-    to_drop = ['age',
-               'sexo',
-               'canal_entrada',
+    to_drop = [
+                  # 'sexo',
+               # 'canal_entrada',
                'conyuemp',
-               'segmento',
-               'nomprov',
+               # 'segmento',
+               # 'nomprov',
                'cod_prov',
-               'pais_residencia',
+               # 'pais_residencia',
                'indresi',
                'indext',
                'indfall',
@@ -155,8 +161,9 @@ def create_joined(cached=False):
                'ult_fec_cli_1t',
                'ind_nuevo',
                'tipodom',
+               'antiguedad',
                # 'pais_residencia'
-               ] #+ to_encode
+               ] + to_encode
 
     train_X = train_X.drop(to_drop, 1)
     test_cut = test_cut.drop(to_drop, 1)
@@ -194,7 +201,7 @@ def create_joined(cached=False):
 
     X_test = test.merge(temp_test, on='ncodpers', how='left')
 
-    to_drop = ['fecha_dato', 'fecha_alta', 'ult_fec_cli_1t'] #+ to_encode
+    to_drop = ['fecha_dato', 'fecha_alta', 'ult_fec_cli_1t'] + to_encode
 
     X_test = X_test.drop(to_drop, 1)
     X = X.drop(to_drop, 1)
@@ -211,6 +218,26 @@ def create_joined(cached=False):
     X_test['renta63'] = X_test['renta'] - X_test['renta_03']
     X_test['renta62'] = X_test['renta'] - X_test['renta_02']
     X_test['renta61'] = X_test['renta'] - X_test['renta_01']
+
+    X['age65'] = X['age'] - X['age_05']
+    X['age64'] = X['age'] - X['age_04']
+    X['age63'] = X['age'] - X['age_03']
+    X['age62'] = X['age'] - X['age_02']
+    X['age61'] = X['age'] - X['age_01']
+    X['age54'] = X['age_05'] - X['age_04']
+    X['age53'] = X['age_05'] - X['age_03']
+    X['age43'] = X['age_04'] - X['age_03']
+
+    X_test['age65'] = X_test['age'] - X_test['age_05']
+    X_test['age64'] = X_test['age'] - X_test['age_04']
+    X_test['age63'] = X_test['age'] - X_test['age_03']
+    X_test['age62'] = X_test['age'] - X_test['age_02']
+    X_test['age61'] = X_test['age'] - X_test['age_01']
+    X_test['age54'] = X_test['age_05'] - X_test['age_04']
+    X_test['age53'] = X_test['age_05'] - X_test['age_03']
+    X_test['age43'] = X_test['age_04'] - X_test['age_03']
+
+    X['age43'] = X['age_04'] - X['age_03']
 
     assert X_test.shape[0] == 929615
 
@@ -281,6 +308,15 @@ def get_train_test(cached=False):
 
     joined = filled_zero_joined()
 
+    for column in ['ind_nom_pens_ult1',
+                   'ind_nomina_ult1',
+                   'ind_recibo_ult1',
+                   'ind_cco_fin_ult1',
+                   'ind_ctma_fin_ult1',
+                   'ind_ctju_fin_ult1']:
+        for month in [5, 4, 3]:
+            joined[column + "_back_" + str(month)] = joined[column + '_0' + str(month)] - joined[column + '_0' + str(month - 1)]
+
     test_index = joined[target_variables()].isnull().all(axis=1)
 
     print test_index.sum()
@@ -343,6 +379,10 @@ def label_encoded(cached):
         train[column] = train[column].apply(helper)
         test[column] = test[column].apply(helper)
 
+        print column
+        print train[column].value_counts()
+        print test[column].value_counts()
+
         train[column] = train[column].fillna('')
         test[column] = test[column].fillna('')
 
@@ -358,7 +398,6 @@ def get_age(age):
     mean_age = 40.0
     min_age = 20.0
     max_age = 90.0
-    range_age = max_age - min_age
 
     if np.isnan(age):
         age = mean_age
@@ -369,7 +408,7 @@ def get_age(age):
         elif age > max_age:
             age = max_age
 
-    return round((age - min_age) / range_age, 4)
+    return age
 
 
 def get_seniority(cust_seniority):
