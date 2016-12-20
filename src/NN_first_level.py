@@ -43,7 +43,7 @@ features = [
  # 'canal_entrada_min',
  # 'canal_entrada_std',
  'cod_prov',
- # 'conyuemp',
+ 'conyuemp',
  'days',
  'marriage_index',
  'days_primary',
@@ -54,17 +54,17 @@ features = [
  'ind_actividad_cliente_04',
  'ind_actividad_cliente_05',
 #  'ind_ahor_fin_ult1',
-#  'ind_ahor_fin_ult1_01',
-#  'ind_ahor_fin_ult1_02',
-#  'ind_ahor_fin_ult1_03',
-#  'ind_ahor_fin_ult1_04',
-#  'ind_ahor_fin_ult1_05',
+ 'ind_ahor_fin_ult1_01',
+ 'ind_ahor_fin_ult1_02',
+ 'ind_ahor_fin_ult1_03',
+ 'ind_ahor_fin_ult1_04',
+ 'ind_ahor_fin_ult1_05',
 #  'ind_aval_fin_ult1',
  'ind_aval_fin_ult1_01',
- # 'ind_aval_fin_ult1_02',
- # 'ind_aval_fin_ult1_03',
- # 'ind_aval_fin_ult1_04',
- # 'ind_aval_fin_ult1_05',
+ 'ind_aval_fin_ult1_02',
+ 'ind_aval_fin_ult1_03',
+ 'ind_aval_fin_ult1_04',
+ 'ind_aval_fin_ult1_05',
 #  'ind_cco_fin_ult1',
  'ind_cco_fin_ult1_01',
  'ind_cco_fin_ult1_02',
@@ -92,7 +92,7 @@ features = [
  'ind_ctju_fin_ult1_03',
  'ind_ctju_fin_ult1_04',
  'ind_ctju_fin_ult1_05',
- # 'ind_ctju_fin_ult1_back_3',
+ 'ind_ctju_fin_ult1_back_3',
  'ind_ctju_fin_ult1_back_4',
  'ind_ctju_fin_ult1_back_5',
 #  'ind_ctma_fin_ult1',
@@ -144,7 +144,7 @@ features = [
  'ind_empleado_01',
  'ind_empleado_02',
  'ind_empleado_03',
- # 'ind_empleado_04',
+ 'ind_empleado_04',
  'ind_empleado_05',
 #  'ind_fond_fin_ult1',
  'ind_fond_fin_ult1_01',
@@ -195,9 +195,6 @@ features = [
  'ind_reca_fin_ult1_03',
  'ind_reca_fin_ult1_04',
  'ind_reca_fin_ult1_05',
- 'ind_reca_fin_ult1_back_3',
- 'ind_reca_fin_ult1_back_4',
- 'ind_reca_fin_ult1_back_5',
 #  'ind_recibo_ult1',
  'ind_recibo_ult1_01',
  'ind_recibo_ult1_02',
@@ -213,9 +210,6 @@ features = [
  'ind_tjcr_fin_ult1_03',
  'ind_tjcr_fin_ult1_04',
  'ind_tjcr_fin_ult1_05',
-'ind_tjcr_fin_ult1_back_3',
-'ind_tjcr_fin_ult1_back_4',
-'ind_tjcr_fin_ult1_back_5',
 #  'ind_valo_fin_ult1',
  'ind_valo_fin_ult1_01',
  'ind_valo_fin_ult1_02',
@@ -236,7 +230,7 @@ features = [
  'indrel_03',
  'indrel_04',
  'indrel_05',
- # 'indrel_1mes',
+ 'indrel_1mes',
  # 'indrel_1mes_01',
  # 'indrel_1mes_02',
  # 'indrel_1mes_03',
@@ -256,8 +250,8 @@ features = [
  'num_products_03',
  'num_products_04',
  'num_products_05',
- # 'nan_age',
- # 'ult_month',
+ 'nan_age',
+ 'ult_month',
  'alta_month',
  # 'nan_age_01',
  # 'nan_age_02',
@@ -293,7 +287,7 @@ features = [
  # 'sexo_median',
  # 'sexo_min',
  # 'sexo_std',
- # 'tipodom',
+ 'tipodom',
  'tiprel_1mes',
  'tiprel_1mes_01',
  'tiprel_1mes_02',
@@ -318,7 +312,7 @@ class XgbWrapper(object):
     def predict(self, x):
         return self.gbdt.predict(xgb.DMatrix(csr_matrix(x)))
 
-nbags = 2
+nbags = 10
 
 
 def get_oof(clf):
@@ -392,7 +386,7 @@ kf = StratifiedKFold(n_folds, shuffle=True, random_state=RANDOM_STATE)
 xgb_params = {
     # 'min_child_weight': 5,
     'eta': 0.05,
-    'colsample_bytree': 0.6,
+    'colsample_bytree': 0.7,
     'max_depth': 6,
     'subsample': 0.95,
     # 'max_delta_step': 0.01,
@@ -420,15 +414,15 @@ print("XG-CV: {}".format(log_loss(y, xg_oof_train)))
 print '[{datetime}] Saving train probs'.format(datetime=str(datetime.datetime.now()))
 oof_train = pd.DataFrame(xg_oof_train, columns=le_y.classes_)
 oof_train['ncodpers'] = train['ncodpers'].values
-oof_train.to_csv('oof/xgb_train_12.csv', index=False)
+oof_train.to_csv('oof/xgb_train_10.csv', index=False)
 
 print '[{datetime}] Saving test probs'.format(datetime=str(datetime.datetime.now()))
 xg_oof_test /= (n_folds * nbags)
 
 oof_test = pd.DataFrame(xg_oof_test, columns=le_y.classes_)
 oof_test['ncodpers'] = test['ncodpers'].values
-oof_test.to_csv('oof/xgb_test_12.csv', index=False)
+oof_test.to_csv('oof/xgb_test_10.csv', index=False)
 
 print '[{datetime}] Saving submission probs'.format(datetime=str(datetime.datetime.now()))
 submission = clean_data.submission(oof_test, test)
-submission.to_csv('submissions/xgb_sub_12.csv', index=False)
+submission.to_csv('submissions/xgb_sub_10.csv', index=False)
