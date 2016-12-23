@@ -537,6 +537,7 @@ def get_mapping(train, column):
         n = x['count']
         m = x['var']
         ld = n / (n + m)
+
         return ld * x['mean'] + (1 - ld) * full_mean
 
     df = df[df['mean'].notnull()]
